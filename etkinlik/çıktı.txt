@@ -1,0 +1,71 @@
+TEST: Komut Enjeksiyonu
+---------------------------------------------------------------------------
+[GÜVENLİK DUVARI] Uyarı: Kabuk komutu çağrısı tespit edildi (kod çalıştırılmaz, yalnızca analiz edilir).
+GÜVENLİK ANALİZİ RAPORU
+1. Tespit Edilen Güvenlik Açığı:
+**Komut Enjeksiyonu (Command Injection / OS Command Injection)**
+
+2. Neden Oluştuğu:
+Bu açık, kullanıcıdan (`input()`) alınan girdinin herhangi bir doğrulama (validation), temizleme (sanitization) veya kaçış (escaping) işlemine tabi tutulmadan doğrudan `os.system()` fonksiyonu aracılığıyla işletim sisteminin kabuğuna (shell) aktarılması nedeniyle oluşur. `os.system` fonksiyonu, komutu çalıştırmadan önce bir kabuk (sh/cmd) başlatır. Bu durum, saldırganın hedef parametresi içine özel karakterler (örneğin `;`, `&&`, `|`) ekleyerek kendi komutlarını da araya sıkıştırmasına olanak tanır.
+
+3. Olası Etkileri:
+*   **Uzaktan Kod Çalıştırma (RCE - Remote Code Execution):** Saldırgan, sunucu üzerinde istedikleri komutları çalıştırabilir.
+*   **Sistem Ele Geçirme:** Yetki seviyesine bağlı olarak sunucu üzerindeki hassas dosyalara erişilebilir, dosyalar silinebilir veya değiştirilebilir.
+*   **Ağ İçi Yayılım (Lateral Movement):** Sunucu, diğer iç ağ kaynaklarına saldırmak için bir üs olarak kullanılabilir.
+*   **Veri Sızıntısı:** Veritabanları veya yapılandırma dosyalarındaki gizli bilgiler çalınabilir.
+
+4. Güvenli ve Optimize Edilmiş Kod:
+```python
+import subprocess
+import ipaddress
+
+def sunucu_kontrol(hedef: str):
+    """
+    Hedef adresi güvenli bir şekilde pingler.
+    Komut kabuk üzerinden çalıştırılmaz ve girdi doğrulaması yapılır.
+    """
+    # Girdinin geçerli bir IP adresi veya hostname olup olmadığını kontrol et
+    # Bu örnekte IPv4/IPv6 doğrulaması yapılmaktadır, gerekirse DNS kontrolü eklenebilir.
+    try:
+        # Önce IP adresi mi diye kontrol et
+        ipaddress.ip_address(hedef)
+    except ValueError:
+        # IP değilse basit bir karakter kontrolü ile güvenli olmayan karakterleri engelle
+        # Alternatif olarak regex ile domain adı doğrulaması yapılabilir.
+        if not all(c.isalnum() or c in '.-' for c in hedef):
+            raise ValueError("Geçersiz sunucu adresi veya IP formatı!")
+
+    try:
+        # os.system yerine, komutun argümanlarını bir liste olarak alan 
+        # ve shell=False (varsayılan) kullanan subprocess.run tercih edilmelidir.
+        # Bu sayede komut enjeksiyonu engellenir.
+        sonuc = subprocess.run(
+            ["ping", "-c", "1", hedef],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5 # Zaman aşımı eklenerek olası DoS (engelleme) durumları önlenir
+        )
+        
+        if sonuc.returncode == 0:
+            print(f"Sunucu aktif:\n{sonuc.stdout}")
+        else:
+            print(f"Sunucuya ulaşılamadı veya hata oluştu:\n{sonuc.stderr}")
+            
+    except subprocess.TimeoutExpired:
+        print("İşlem zaman aşımına uğradı.")
+    except Exception as e:
+        print(f"Bir hata oluştu: {e}")
+
+if __name__ == "__main__":
+    hedef_input = input("Sunucu adresi: ").strip()
+    try:
+        sunucu_kontrol(hedef_input)
+    except ValueError as ve:
+        print(f"Güvenlik Hatası: {ve}")
+```
+
+[DENETİM] Rapor 4 maddenin tamamını içeriyor.
+===========================================================================
+TÜM GÜVENLİK TESTLERİ TAMAMLANDI
+===========================================================================
